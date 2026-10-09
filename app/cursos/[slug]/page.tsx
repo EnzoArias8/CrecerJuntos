@@ -35,6 +35,24 @@ export default async function CoursePage({ params }: { params: Promise<{ slug: s
 
 	if (!curso) notFound()
 
+	const { data: { user }, error: userError } = await supabase.auth.getUser()
+	if (userError) throw new Error(`No se pudo verificar la sesión: ${userError.message}`)
+
+	let tieneAcceso = false
+	if (user) {
+		const { data: acceso, error: accessError } = await supabase
+			.from("accesos")
+			.select("id")
+			.eq("usuario_id", user.id)
+			.eq("curso_id", curso.id)
+			.eq("estado", "activo")
+			.limit(1)
+			.maybeSingle()
+
+		if (accessError) throw new Error(`No se pudo verificar el acceso al curso: ${accessError.message}`)
+		tieneAcceso = Boolean(acceso)
+	}
+
 	const { data: opiniones } = await supabase
 		.from("opiniones")
 		.select("calificacion")
@@ -85,17 +103,19 @@ export default async function CoursePage({ params }: { params: Promise<{ slug: s
 								<div className="flex items-center gap-0.5 text-[#d2a13b]" aria-label={`${promedioCalificacion.toFixed(1)} de 5 estrellas`}>
 									{Array.from({ length: 5 }, (_, index) => <Star key={index} className={`size-4 ${index < Math.round(promedioCalificacion) ? "fill-current" : "fill-none"}`} aria-hidden="true" />)}
 								</div>
-								<Link href="#opiniones" className="text-sm text-stone-500 underline decoration-stone-300 underline-offset-4 hover:text-stone-800">Ver opiniones ({totalOpiniones} opiniones)</Link>
+								<Link href={`/testimonios?curso_id=${encodeURIComponent(String(curso.id))}`} className="cursor-pointer text-sm text-stone-500 underline decoration-stone-300 underline-offset-4 transition-colors hover:text-stone-800 hover:decoration-stone-500">Ver opiniones ({totalOpiniones} opiniones)</Link>
 							</div>
 						</section>
 
-						<section aria-labelledby="purchase-options" className="space-y-4">
-							<div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#9f5e4d]">Inscripción</p><h2 id="purchase-options" className="mt-2 text-2xl font-semibold text-stone-800">Elegí cómo comprarlo</h2></div>
-							<div className="grid gap-3 sm:grid-cols-2">
-								<Card className="rounded-xl border-[#dfc5b8] bg-white py-0 shadow-sm ring-1 ring-[#f1e5de]"><CardContent className="p-5"><p className="text-sm font-medium text-stone-600">Pagando con Mercado Pago</p><p className="mt-3 text-3xl font-semibold tracking-tight text-stone-800">{formattedPrice}</p><p className="mt-1 text-xs text-stone-500">Pago único en pesos</p><CoursePurchaseButton courseId={courseSlug} className="mt-5 h-10 w-full rounded-lg px-4 bg-[#FFE600] hover:bg-[#FFD100] text-[#001b33] font-bold flex justify-center items-center gap-2 transition-all"><Wallet aria-hidden="true" /> Pagar con Mercado Pago</CoursePurchaseButton></CardContent></Card>
-								<Card className="rounded-xl border-stone-200 bg-white py-0 shadow-sm"><CardContent className="p-5"><p className="text-sm font-medium text-stone-600">Pagando con PayPal</p><p className="mt-3 text-3xl font-semibold tracking-tight text-stone-800">{priceUsd ?? "No disponible"}</p><p className="mt-1 text-xs text-stone-500">Pago único en dólares</p><div className="mt-4 relative z-0"><PayPalCourseButton courseTitle={courseTitle} amount={paypalAmount} /></div></CardContent></Card>
-							</div>
-						</section>
+						{!tieneAcceso && (
+							<section id="comprar" aria-labelledby="purchase-options" className="scroll-mt-6 space-y-4">
+								<div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#9f5e4d]">Inscripción</p><h2 id="purchase-options" className="mt-2 text-2xl font-semibold text-stone-800">Elegí cómo comprarlo</h2></div>
+								<div className="grid gap-3 sm:grid-cols-2">
+									<Card className="rounded-xl border-[#dfc5b8] bg-white py-0 shadow-sm ring-1 ring-[#f1e5de]"><CardContent className="p-5"><p className="text-sm font-medium text-stone-600">Pagando con Mercado Pago</p><p className="mt-3 text-3xl font-semibold tracking-tight text-stone-800">{formattedPrice}</p><p className="mt-1 text-xs text-stone-500">Pago único en pesos</p><CoursePurchaseButton courseId={courseSlug} className="mt-5 h-10 w-full rounded-lg px-4 bg-[#FFE600] hover:bg-[#FFD100] text-[#001b33] font-bold flex justify-center items-center gap-2 transition-all"><Wallet aria-hidden="true" /> Pagar con Mercado Pago</CoursePurchaseButton></CardContent></Card>
+									<Card className="rounded-xl border-stone-200 bg-white py-0 shadow-sm"><CardContent className="p-5"><p className="text-sm font-medium text-stone-600">Pagando con PayPal</p><p className="mt-3 text-3xl font-semibold tracking-tight text-stone-800">{priceUsd ?? "No disponible"}</p><p className="mt-1 text-xs text-stone-500">Pago único en dólares</p><div className="mt-4 relative z-0"><PayPalCourseButton courseTitle={courseTitle} amount={paypalAmount} /></div></CardContent></Card>
+								</div>
+							</section>
+						)}
 
 						<section aria-labelledby="syllabus-title">
 							<div className="mb-4 flex items-end justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#54745c]">Contenido incluido</p><h2 id="syllabus-title" className="mt-2 text-2xl font-semibold text-stone-800">Temario del curso</h2></div><span className="text-sm text-stone-500">{lessons.length} {lessons.length === 1 ? "clase" : "clases"}</span></div>
@@ -134,8 +154,17 @@ export default async function CoursePage({ params }: { params: Promise<{ slug: s
 								{imageUrl && <Image src={imageUrl} alt={courseTitle} fill priority unoptimized sizes="(max-width: 1024px) 100vw, 33vw" className="object-cover" />}
 							</div>
 							<CardContent className="space-y-5 p-5 sm:p-6">
-								<div className="border-t border-stone-100 pt-4"><p className="text-xs font-medium uppercase tracking-wide text-stone-400">Inversión desde</p><p className="mt-1 text-3xl font-semibold tracking-tight text-stone-800">{formattedPrice}</p><p className="mt-1 text-sm text-stone-500">o {priceUsd ?? "USD no disponible"}</p></div>
-								<CoursePurchaseButton courseId={courseSlug} className="h-12 w-full rounded-xl bg-[#C07A60] px-5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-[#a9634d]">Quiero aprender</CoursePurchaseButton>
+								{tieneAcceso ? (
+									<div className="border-t border-stone-100 pt-4">
+										<p className="text-sm font-medium text-[#54745c]">Este curso ya está disponible para ti.</p>
+										<Button nativeButton={false} render={<Link href="/mis-cursos" />} className="mt-4 h-12 w-full rounded-xl bg-[#54745c] px-5 text-base font-semibold text-white shadow-sm hover:bg-[#45624c]">Ir a mis cursos</Button>
+									</div>
+								) : (
+									<>
+										<div className="border-t border-stone-100 pt-4"><p className="text-xs font-medium uppercase tracking-wide text-stone-400">Inversión desde</p><p className="mt-1 text-3xl font-semibold tracking-tight text-stone-800">{formattedPrice}</p><p className="mt-1 text-sm text-stone-500">o {priceUsd ?? "USD no disponible"}</p></div>
+										<Button nativeButton={false} render={<Link href="#comprar" />} className="h-12 w-full rounded-xl bg-[#C07A60] px-5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-[#a9634d]">Quiero aprender</Button>
+									</>
+								)}
 								<p className="flex items-center justify-center gap-2 text-xs text-stone-400"><ShieldCheck className="size-4 text-stone-400" /> Pago seguro y protegido</p>
 							</CardContent>
 						</Card>

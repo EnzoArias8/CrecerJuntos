@@ -34,7 +34,7 @@ export default function LoginPage() {
 		const redirectTo = new URLSearchParams(window.location.search).get('redirectedFrom')
 		const destination = redirectTo?.startsWith('/') && !redirectTo.startsWith('//')
 			? redirectTo
-			: '/mis-cursos'
+			: '/'
 		router.replace(destination)
 	}
 

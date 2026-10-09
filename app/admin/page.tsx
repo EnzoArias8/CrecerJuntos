@@ -68,7 +68,10 @@ export default async function AdminDashboard() {
   const recentUsers = authUsers
     .sort((first, second) => new Date(second.created_at).getTime() - new Date(first.created_at).getTime())
     .slice(0, 5)
-  const totalVentas = (accesos ?? []).reduce((total, acceso) => total + Number(acceso.monto_abonado ?? 0), 0)
+  const totalVentas = (accesos ?? []).reduce((total, acceso) => {
+    const amount = Number(acceso.monto_abonado ?? 0)
+    return total + (Number.isFinite(amount) ? amount : 0)
+  }, 0)
   const ventasFormateadas = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(totalVentas)
   const metrics = [
     { ...metricStyles[0], value: ventasFormateadas },

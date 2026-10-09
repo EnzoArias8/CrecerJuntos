@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { createClient } from '@/utils/supabase/server'
 
-type RelatedCourse = { titulo?: string | null; precio_ars?: number | string | null } | Array<{ titulo?: string | null; precio_ars?: number | string | null }> | null
+type RelatedCourse = { titulo?: string | null } | Array<{ titulo?: string | null }> | null
 type SaleRecord = {
   id: string | number
   created_at: string | null
@@ -22,7 +22,7 @@ function getRelatedRecord<T>(record: T | T[] | null | undefined): T | null {
 }
 
 function formatPrice(value: number | string | null | undefined) {
-  if (value == null || value === '') return '—'
+  if (value == null || value === '') return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(0)
   const amount = Number(value)
   if (!Number.isFinite(amount)) return '—'
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(amount)
@@ -46,7 +46,7 @@ export default async function AdminSalesPage() {
   const supabase = await createClient()
   const { data: ventas, error } = await supabase
     .from('accesos')
-    .select('*, perfiles(nombre_completo, email), cursos(titulo, precio_ars)')
+    .select('id, created_at, usuario_id, monto_abonado, estado, perfiles(nombre_completo, email), cursos(titulo)')
     .order('created_at', { ascending: false })
   const sales = (ventas ?? []) as SaleRecord[]
   const authUsers = new Map<string, User>()
@@ -104,7 +104,7 @@ export default async function AdminSalesPage() {
                 const course = getRelatedRecord(sale.cursos)
                 const comprador = sale.usuario_id ? authUsers.get(sale.usuario_id) : undefined
                 const status = sale.estado ?? 'pendiente'
-                const amount = sale.monto_abonado ?? course?.precio_ars
+                const amount = sale.monto_abonado
                 return <TableRow key={sale.id ?? index}><TableCell className="pl-5 tabular-nums text-sm text-stone-500">{formatDate(sale.created_at)}</TableCell><TableCell className="whitespace-nowrap text-sm font-medium text-stone-800">{comprador?.email || 'Usuario manual'}</TableCell><TableCell className="text-sm text-stone-600">{course?.titulo || '—'}</TableCell><TableCell className="text-right text-sm font-medium tabular-nums text-stone-800">{formatPrice(amount)}</TableCell><TableCell className="pr-5"><Badge className={`rounded-full px-2.5 font-medium capitalize ${getStatusStyle(status)}`}>{status}</Badge></TableCell></TableRow>
               })}
             </TableBody>
