@@ -125,7 +125,7 @@ export default async function MisCursosPage({ searchParams }: { searchParams: Pr
 					{courses.length === 0 ? (
 						<div className="col-span-full flex flex-col items-center gap-4 rounded-2xl border border-stone-200 bg-white px-5 py-12 text-center">
 							<p className="text-sm text-stone-500">Aún no tienes cursos en tu biblioteca.</p>
-							<Button nativeButton={false} render={<Link href="/cursos" />} className="h-10 rounded-lg bg-[#C07A60] px-4 text-sm text-white hover:bg-[#a9634d]">Nuestros Cursos <ArrowRight data-icon="inline-end" /></Button>
+							<Button nativeButton={false} render={<Link href="/cursos" />} className="h-10 rounded-lg bg-[#C07A60] px-4 text-sm text-white hover:bg-[#a9634d]">Cursos <ArrowRight data-icon="inline-end" /></Button>
 						</div>
 					) : courses.map((course) => (
 						<Card key={course.accessId ?? course.slug} className="h-full flex-col overflow-hidden rounded-2xl border-stone-200 bg-white py-0 shadow-sm transition-shadow hover:shadow-md">

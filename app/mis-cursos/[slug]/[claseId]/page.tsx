@@ -78,6 +78,15 @@ export default async function LearningPage({ params }: { params: Promise<{ slug:
 		.select('*')
 		.eq('usuario_id', user.id)
 		.eq('curso_id', curso.id)
+	const { data: existingReview, error: reviewError } = await supabase
+		.from('opiniones')
+		.select('id')
+		.eq('usuario_id', user.id)
+		.eq('curso_slug', slug)
+		.limit(1)
+		.maybeSingle()
+	if (reviewError) throw new Error(`No se pudo verificar si ya existe una opinión: ${reviewError.message}`)
+
 	const completedLessonIds = allLessons
 		.filter((lesson) => (progreso ?? []).some((row) => {
 			if (row.completada === false || row.estado === 'pendiente') return false
@@ -97,5 +106,5 @@ export default async function LearningPage({ params }: { params: Promise<{ slug:
 		.map((part) => part[0].toLocaleUpperCase())
 		.join('') || 'U'
 
-	return <LearningPlayer courseId={String(curso.id)} courseSlug={slug} courseTitle={String(curso.titulo ?? '')} classId={claseId} initials={initials} userId={user.id} modules={modules} completedLessonIds={completedLessonIds} />
+	return <LearningPlayer courseId={String(curso.id)} courseSlug={slug} courseTitle={String(curso.titulo ?? '')} classId={claseId} initials={initials} userId={user.id} hasExistingReview={Boolean(existingReview)} modules={modules} completedLessonIds={completedLessonIds} />
 }

@@ -7,16 +7,17 @@ import { Button } from '@/components/ui/button'
 import { createClient } from '@/utils/supabase/client'
 
 type CourseReviewFormProps = {
-	cursoId: string | number
 	usuarioId: string
+	cursoSlug: string
+	hasExistingReview: boolean
 }
 
-export function CourseReviewForm({ cursoId, usuarioId }: CourseReviewFormProps) {
+export function CourseReviewForm({ usuarioId, cursoSlug, hasExistingReview }: CourseReviewFormProps) {
 	const [calificacion, setCalificacion] = useState(0)
 	const [comentario, setComentario] = useState('')
 	const [isSubmitting, setIsSubmitting] = useState(false)
 	const [error, setError] = useState('')
-	const [isSubmitted, setIsSubmitted] = useState(false)
+	const [isSubmitted, setIsSubmitted] = useState(hasExistingReview)
 
 	async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
 		event.preventDefault()
@@ -25,17 +26,17 @@ export function CourseReviewForm({ cursoId, usuarioId }: CourseReviewFormProps) 
 
 		try {
 			const supabase = createClient()
-			const [{ data: { user }, error: userError }, { data: curso, error: courseError }] = await Promise.all([
-				supabase.auth.getUser(),
-				supabase.from('cursos').select('slug').eq('id', cursoId).single(),
-			])
+			const { data: { user }, error: userError } = await supabase.auth.getUser()
 
 			if (userError || !user || user.id !== usuarioId) throw new Error('Inicia sesión para enviar una opinión.')
-			if (courseError || !curso) throw new Error('No se pudo encontrar el curso.')
 
-			const nombreAutor = String(user.user_metadata?.full_name ?? user.user_metadata?.nombre_completo ?? user.email?.split('@')[0] ?? 'Estudiante')
+			const metadataName = user.user_metadata?.nombre_completo ?? user.user_metadata?.full_name ?? user.user_metadata?.name
+			const nombreAutor = typeof metadataName === 'string' && metadataName.trim()
+				? metadataName.trim()
+				: user.email?.split('@')[0] ?? 'Estudiante'
 			const { error: insertError } = await supabase.from('opiniones').insert({
-				curso_slug: curso.slug,
+				usuario_id: user.id,
+				curso_slug: cursoSlug,
 				nombre_autor: nombreAutor,
 				comentario: comentario.trim(),
 				calificacion,
@@ -50,8 +51,8 @@ export function CourseReviewForm({ cursoId, usuarioId }: CourseReviewFormProps) 
 		}
 	}
 
-	if (isSubmitted) {
-		return <p role="status" className="rounded-xl border border-[#dce9dc] bg-[#f0f5ef] p-5 text-sm font-medium text-[#45624c]">Gracias por compartir tu opinión.</p>
+	if (hasExistingReview || isSubmitted) {
+		return <p role="status" className="rounded-xl border border-[#dce9dc] bg-[#f0f5ef] p-5 text-sm font-medium text-[#45624c]">¡Gracias por tu reseña!</p>
 	}
 
 	return (

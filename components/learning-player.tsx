@@ -8,6 +8,7 @@ import { ArrowLeft, Check, Circle, Download, FileText, MessageCircle, Pause, Pla
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { CourseReviewForm } from "@/components/CourseReviewForm"
 import { createClient } from "@/utils/supabase/client"
 
 type CourseLesson = {
@@ -38,6 +39,7 @@ type LearningPlayerProps = {
   classId: string
   initials: string
   userId: string
+  hasExistingReview: boolean
   modules: CourseModule[]
   completedLessonIds?: string[]
 }
@@ -48,6 +50,8 @@ export function LearningPlayer({
   courseTitle,
   classId,
   initials,
+  userId,
+  hasExistingReview,
   modules,
   completedLessonIds = [],
 }: LearningPlayerProps) {
@@ -116,6 +120,7 @@ export function LearningPlayer({
   const isCompleted = completedLessons.includes(activeLesson.id)
   const completedCount = completedLessons.filter((lessonId) => allLessons.some((lesson) => lesson.id === lessonId)).length
   const totalLessons = allLessons.length
+  const courseCompleted = totalLessons > 0 && completedCount === totalLessons
   const currentIndex = allLessons.indexOf(activeLesson)
   const prevLesson = currentIndex > 0 ? allLessons[currentIndex - 1] : undefined
   const nextLesson = currentIndex >= 0 ? allLessons[currentIndex + 1] : undefined
@@ -359,6 +364,15 @@ export function LearningPlayer({
                 )
               })}
             </Accordion>
+            {courseCompleted && (
+              <section aria-labelledby="course-review-title" className="mt-5 space-y-3 border-t border-stone-200 pt-5">
+                <div>
+                  <h3 id="course-review-title" className="font-semibold text-stone-800">¡Felicitaciones por completar el curso!</h3>
+                  <p className="mt-1 text-sm leading-5 text-stone-500">Si quieres, comparte tu experiencia con otras familias.</p>
+                </div>
+                <CourseReviewForm usuarioId={userId} cursoSlug={courseSlug} hasExistingReview={hasExistingReview} />
+              </section>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-2 border-t border-stone-200 p-3 sm:p-4">
             <Button

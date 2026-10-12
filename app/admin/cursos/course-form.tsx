@@ -7,9 +7,24 @@ import { ArrowLeft, BookOpen, CirclePlus, Plus, Trash2 } from 'lucide-react'
 
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { createClient } from '@/utils/supabase/client'
+
+type Instructor = {
+  id: string | number
+  nombre: string
+  profesion: string | null
+  imagen_url: string | null
+}
 
 export type CourseLessonDraft = {
   id: string
@@ -80,6 +95,14 @@ export function CourseForm({ title, submitLabel, initialData }: CourseFormProps)
   const [imagenFile, setImagenFile] = useState<File | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
+  const [instructors, setInstructors] = useState<Instructor[]>([])
+  const [instructorsError, setInstructorsError] = useState('')
+  const [isInstructorDialogOpen, setIsInstructorDialogOpen] = useState(false)
+  const [instructorName, setInstructorName] = useState('')
+  const [instructorProfession, setInstructorProfession] = useState('')
+  const [instructorPhoto, setInstructorPhoto] = useState<File | null>(null)
+  const [instructorSaveError, setInstructorSaveError] = useState('')
+  const [isSavingInstructor, setIsSavingInstructor] = useState(false)
   const [fields, setFields] = useState(() => ({
     name: initialData?.name ?? '',
     category: initialData?.category ?? '',
@@ -96,6 +119,31 @@ export function CourseForm({ title, submitLabel, initialData }: CourseFormProps)
   }))
   const [modules, setModules] = useState<CourseModuleDraft[]>(initialData?.modules?.length ? initialData.modules : starterModules)
   const totalLessons = modules.reduce((total, module) => total + module.lessons.length, 0)
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadInstructors() {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('autores')
+        .select('id, nombre, profesion, imagen_url')
+        .order('nombre')
+
+      if (!isMounted) return
+      if (error) {
+        setInstructorsError(`No se pudieron cargar los instructores: ${error.message}`)
+        return
+      }
+
+      setInstructors(data ?? [])
+    }
+
+    void loadInstructors()
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   useEffect(() => {
     setFields({
@@ -126,6 +174,76 @@ export function CourseForm({ title, submitLabel, initialData }: CourseFormProps)
         ? current.instructors.filter((selected) => selected !== instructor)
         : [...current.instructors, instructor],
     }))
+  }
+
+  async function handleAddInstructor(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setInstructorSaveError('')
+
+    const name = instructorName.trim()
+    const profession = instructorProfession.trim()
+    if (!name || !profession || !instructorPhoto) {
+      setInstructorSaveError('Completa el nombre, la profesión y selecciona una foto.')
+      return
+    }
+
+    setIsSavingInstructor(true)
+    const supabase = createClient()
+    let uploadedPath: string | null = null
+
+    try {
+      const safeFileName = instructorPhoto.name.replace(/[^a-zA-Z0-9._-]/g, '-')
+      const storagePath = `${globalThis.crypto.randomUUID()}-${safeFileName}`
+      const { data: uploadedFile, error: uploadError } = await supabase.storage
+        .from('autores')
+        .upload(storagePath, instructorPhoto, { contentType: instructorPhoto.type, upsert: false })
+
+      if (uploadError) throw new Error(`No se pudo subir la foto: ${uploadError.message}`)
+      uploadedPath = uploadedFile.path
+
+      const { data: publicUrlData } = supabase.storage.from('autores').getPublicUrl(uploadedFile.path)
+      const { data: instructor, error: insertError } = await supabase
+        .from('autores')
+        .insert({
+          nombre: name,
+          profesion: profession,
+          imagen_url: publicUrlData.publicUrl,
+        })
+        .select('id, nombre, profesion, imagen_url')
+        .single()
+
+      if (insertError) {
+        const { error: cleanupError } = await supabase.storage.from('autores').remove([uploadedFile.path])
+        uploadedPath = null
+        const cleanupMessage = cleanupError ? ` No se pudo limpiar la foto subida: ${cleanupError.message}` : ''
+        throw new Error(`No se pudo guardar el instructor: ${insertError.message}.${cleanupMessage}`)
+      }
+      if (!instructor) throw new Error('Supabase no devolvió el instructor guardado.')
+
+      setInstructors((current) => [...current, instructor].sort((first, second) => first.nombre.localeCompare(second.nombre)))
+      setFields((current) => ({
+        ...current,
+        instructors: current.instructors.includes(instructor.nombre)
+          ? current.instructors
+          : [...current.instructors, instructor.nombre],
+      }))
+      setInstructorName('')
+      setInstructorProfession('')
+      setInstructorPhoto(null)
+      setIsInstructorDialogOpen(false)
+    } catch (error) {
+      if (uploadedPath) {
+        const { error: cleanupError } = await supabase.storage.from('autores').remove([uploadedPath])
+        if (cleanupError) {
+          setInstructorSaveError(`${error instanceof Error ? error.message : 'No se pudo guardar el instructor.'} No se pudo limpiar la foto subida: ${cleanupError.message}`)
+          setIsSavingInstructor(false)
+          return
+        }
+      }
+      setInstructorSaveError(error instanceof Error ? error.message : 'No se pudo guardar el instructor.')
+    } finally {
+      setIsSavingInstructor(false)
+    }
   }
 
   function updateModuleTitle(moduleId: string, value: string) {
@@ -273,12 +391,49 @@ export function CourseForm({ title, submitLabel, initialData }: CourseFormProps)
               <fieldset className="space-y-3">
                 <legend className="text-sm font-medium text-stone-700">Instructor/es</legend>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {['Rocío', 'Lucía'].map((instructor) => {
-                    const checked = fields.instructors.includes(instructor)
-                    return <label key={instructor} className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 text-sm transition-colors ${checked ? 'border-[#b7cbb3] bg-[#f3f7f1] text-[#45624c]' : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-50'}`}><input type="checkbox" name="instructors" value={instructor} checked={checked} onChange={() => toggleInstructor(instructor)} className="size-4 accent-[#54745c]" />{instructor}</label>
+                  {[
+                    { id: 'founder-rocio', nombre: 'Rocío', profesion: null },
+                    { id: 'founder-lucia', nombre: 'Lucía', profesion: null },
+                    ...instructors.filter((instructor) => !['rocío', 'lucía'].includes(instructor.nombre.trim().toLocaleLowerCase('es'))),
+                  ].map((instructor) => {
+                    const checked = fields.instructors.includes(instructor.nombre)
+                    return <label key={instructor.id} className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 text-sm transition-colors ${checked ? 'border-[#b7cbb3] bg-[#f3f7f1] text-[#45624c]' : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-50'}`}><input type="checkbox" name="instructors" value={instructor.nombre} checked={checked} onChange={() => toggleInstructor(instructor.nombre)} className="size-4 accent-[#54745c]" /><span className="min-w-0"><span className="block">{instructor.nombre}</span>{instructor.profesion && <span className="mt-0.5 block text-xs text-stone-500">{instructor.profesion}</span>}</span></label>
                   })}
                 </div>
+                {instructorsError && <p role="alert" className="text-sm text-rose-700">{instructorsError}</p>}
                 <p className="text-xs text-stone-400">Puedes seleccionar una o ambas profesionales.</p>
+                <Button type="button" variant="outline" onClick={() => { setInstructorSaveError(''); setIsInstructorDialogOpen(true) }} className="h-9 rounded-lg border-stone-300 text-sm text-stone-700">
+                  + Agregar nuevo instructor
+                </Button>
+                <Dialog open={isInstructorDialogOpen} onOpenChange={(open) => { if (!isSavingInstructor) setIsInstructorDialogOpen(open) }}>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Agregar nuevo instructor</DialogTitle>
+                      <DialogDescription>Completa los datos y selecciona una foto para agregarlo al catálogo.</DialogDescription>
+                    </DialogHeader>
+                    <form id="add-instructor-form" onSubmit={handleAddInstructor} className="space-y-4">
+                      <div className="space-y-2">
+                        <label htmlFor="instructor-name" className="text-sm font-medium text-stone-700">Nombre</label>
+                        <Input id="instructor-name" required value={instructorName} onChange={(event) => setInstructorName(event.target.value)} className="h-10 rounded-lg border-stone-300 bg-white" />
+                      </div>
+                      <div className="space-y-2">
+                        <label htmlFor="instructor-profession" className="text-sm font-medium text-stone-700">Profesión</label>
+                        <Input id="instructor-profession" required value={instructorProfession} onChange={(event) => setInstructorProfession(event.target.value)} className="h-10 rounded-lg border-stone-300 bg-white" />
+                      </div>
+                      <div className="space-y-2">
+                        <label htmlFor="instructor-photo" className="text-sm font-medium text-stone-700">Foto</label>
+                        <input id="instructor-photo" type="file" accept="image/*" required onChange={(event) => setInstructorPhoto(event.target.files?.[0] ?? null)} className="block w-full text-sm text-stone-600 file:mr-3 file:rounded-md file:border-0 file:bg-stone-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-stone-700 hover:file:bg-stone-200" />
+                      </div>
+                      {instructorSaveError && <p role="alert" className="text-sm text-rose-700">{instructorSaveError}</p>}
+                    </form>
+                    <DialogFooter>
+                      <Button type="button" variant="outline" disabled={isSavingInstructor} onClick={() => setIsInstructorDialogOpen(false)}>Cancelar</Button>
+                      <Button type="submit" form="add-instructor-form" disabled={isSavingInstructor} className="bg-[#54745c] text-white hover:bg-[#45624c]">
+                        {isSavingInstructor ? 'Guardando...' : 'Guardar instructor'}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </fieldset>
             </div>
           </CardContent>
